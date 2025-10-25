@@ -23,7 +23,10 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadUserData() async {
     final user = _auth.currentUser;
     if (user != null) {
-      final doc = await FirebaseFirestore.instance.collection('usuarios').doc(user.uid).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(user.uid)
+          .get();
       if (doc.exists && doc.data()!.containsKey('nombre')) {
         setState(() {
           userName = doc['nombre'];
@@ -70,6 +73,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 20),
 
+            // OPCIONES PRINCIPALES
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -78,10 +82,8 @@ class _HomePageState extends State<HomePage> {
                   icon: Icons.calendar_today,
                   title: "Agendar una Cita",
                   onTap: () {
-                    // Aquí se mostrarían las citas desde la colección "citas"
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Próximamente: Agendar Cita")),
-                    );
+                    // Redirigir directamente a la pantalla de citas
+                    Navigator.pushNamed(context, Routes.citas);
                   },
                 ),
                 _mainOptionCard(
@@ -96,7 +98,10 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 25),
             const Text(
               "Consejos Médicos Rápidos:",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.teal),
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.teal),
             ),
             const SizedBox(height: 10),
             const Text(
@@ -111,7 +116,10 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 25),
             const Text(
               "Especialistas disponibles:",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.teal),
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.teal),
             ),
             const SizedBox(height: 10),
             _buildSpecialistsList(),
@@ -119,19 +127,35 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 25),
             const Text(
               "Recomendaciones del día:",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.teal),
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.teal),
             ),
             const SizedBox(height: 10),
             _recommendationCard(),
+
+            const SizedBox(height: 30),
+
+            // BOTÓN DE CERRAR SESIÓN
+            ElevatedButton(
+              onPressed: () async {
+                await _auth.signOut();
+                Navigator.pushReplacementNamed(context, Routes.login);
+              },
+              child: const Text("Cerrar sesión"),
+            ),
           ],
         ),
       ),
 
+      // NAVIGATION BAR
       bottomNavigationBar: BottomNavigationBar(
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
           BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Mensajes'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Configuración'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.settings), label: 'Configuración'),
         ],
         currentIndex: _selectedIndex,
         selectedItemColor: Colors.teal,
@@ -140,7 +164,11 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _mainOptionCard(BuildContext context, {required IconData icon, required String title, required VoidCallback onTap}) {
+  // Tarjetas principales
+  Widget _mainOptionCard(BuildContext context,
+      {required IconData icon,
+      required String title,
+      required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -162,13 +190,17 @@ class _HomePageState extends State<HomePage> {
           children: [
             Icon(icon, size: 40, color: Colors.teal[800]),
             const SizedBox(height: 10),
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            Text(title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
     );
   }
 
+  // Lista de especialistas
   Widget _buildSpecialistsList() {
     final specialists = [
       "Cardiólogo",
@@ -188,6 +220,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // Tarjeta de recomendaciones
   Widget _recommendationCard() {
     return Card(
       elevation: 4,

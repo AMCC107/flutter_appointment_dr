@@ -6,6 +6,7 @@ import 'messages_page.dart';
 import 'settings_page.dart';
 import 'privacy_page.dart';
 import 'about_page.dart';
+import 'citas_page.dart';
 
 class Routes {
   static const String login = '/login';
@@ -15,6 +16,7 @@ class Routes {
   static const String settings = '/settings';
   static const String privacy = '/privacy';
   static const String about = '/about';
+  static const String citas='/citas';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -24,6 +26,8 @@ class Routes {
         return MaterialPageRoute(builder: (_) => const HomePage());
       case '/profile':
         return MaterialPageRoute(builder: (_) => const ProfilePage());
+      case citas:
+        return MaterialPageRoute(builder:(_)=>const CitasPage());
       case '/messages':
         return MaterialPageRoute(builder: (_) => const MessagesPage());
       case '/settings':
