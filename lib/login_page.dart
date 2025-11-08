@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'routes.dart';
 
@@ -10,186 +10,397 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _formKey = GlobalKey<FormState>();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   bool _obscurePassword = true;
+  bool _isLoading = false;
+  bool _rememberMe = false;
 
-  /// Recarga del formulario 
   Future<void> _recargarFormulario() async {
-    await Future.delayed(const Duration(milliseconds: 800));
+    await Future.delayed(const Duration(milliseconds: 700));
     setState(() {
       emailController.clear();
       passwordController.clear();
       _obscurePassword = true;
+      _rememberMe = false;
     });
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("🔄 Formulario recargado")),
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _showCupertinoError(String title, String message) async {
+    if (!mounted) return;
+    await showCupertinoDialog(
+      context: context,
+      builder: (_) => CupertinoAlertDialog(
+        title: Text(title),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Text(message),
+        ),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _signIn() async {
+    final email = emailController.text.trim();
+    final pass = passwordController.text.trim();
+
+    if (email.isEmpty || pass.isEmpty) {
+      await _showCupertinoError('Campos incompletos', 'Ingresa correo y contraseña');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: pass,
+      );
+
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, Routes.home);
+
+    } on FirebaseAuthException catch (e) {
+      String message = '';
+      if (e.code == 'user-not-found') message = 'Usuario no encontrado';
+      else if (e.code == 'wrong-password') message = 'Contraseña incorrecta';
+      else message = e.message ?? 'Error desconocido';
+
+      await _showCupertinoError('Error de autenticación', message);
+    } catch (e) {
+      await _showCupertinoError('Error', e.toString());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _onDoubleTapImage() {
+    showCupertinoDialog(
+      context: context,
+      builder: (_) => const CupertinoAlertDialog(
+        title: Text('👋 Bienvenido'),
+        content: Padding(
+          padding: EdgeInsets.only(top: 8.0),
+          child: Text(''),
+        ),
+        actions: [
+          CupertinoDialogAction(child: Text('OK')),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      /// TAP en cualquier lugar → Cerrar teclado
-      onTap: () => FocusScope.of(context).unfocus(),
-      child: Scaffold(
-        body: RefreshIndicator(
-          onRefresh: _recargarFormulario, // Pull-to-Refresh
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Sistema de Citas Médicas',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 20),
+    final brightness = MediaQuery.of(context).platformBrightness;
+    final isDark = brightness == Brightness.dark;
 
-                  /// GESTO: Doble Tap sobre la imagen
-                  Center(
-                    child: GestureDetector(
-                      onDoubleTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("👋 Bienvenido a DoctorAppointmentApp")),
-                        );
-                      },
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          'https://kffhealthnews.org/wp-content/uploads/sites/2/2018/03/telemedicine.jpg?w=1024',
-                          height: 200,
-                          width: 200,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
+    return CupertinoPageScaffold(
+      backgroundColor: isDark
+          ? CupertinoColors.systemBackground
+          : CupertinoColors.systemGroupedBackground,
+      child: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            CupertinoSliverNavigationBar(
+              largeTitle: const Text(''),
+              backgroundColor: isDark
+                  ? CupertinoColors.systemBackground
+                  : CupertinoColors.systemGroupedBackground,
+            ),
+
+            CupertinoSliverRefreshControl(
+              onRefresh: _recargarFormulario,
+            ),
+
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Título principal
+                    const Text(
+                      'Sistema de Citas Médicas',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    const SizedBox(height: 32),
+
+                    // Imagen
+                    GestureDetector(
+                      onDoubleTap: _onDoubleTapImage,
+                      child: Container(
+                        height: 160,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          image: const DecorationImage(
+                            image: NetworkImage(
+                              'https://kffhealthnews.org/wp-content/uploads/sites/2/2018/03/telemedicine.jpg?w=1024',
+                            ),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // Formulario
+                    Container(
+                      padding: const EdgeInsets.all(0),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? CupertinoColors.secondarySystemBackground
+                            : CupertinoColors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          if (!isDark)
+                            BoxShadow(
+                              color: CupertinoColors.systemGrey.withOpacity(0.1),
+                              blurRadius: 12,
+                              offset: const Offset(0, 2),
+                            ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Campo email
+                          Container(
+                            decoration: BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: CupertinoColors.systemGrey5,
+                                  width: 0.5,
+                                ),
+                              ),
+                            ),
+                            child: CupertinoTextField(
+                              controller: emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              placeholder: 'Correo electrónico',
+                              placeholderStyle: TextStyle(
+                                color: CupertinoColors.systemGrey,
+                                fontWeight: FontWeight.w400,
+                              ),
+                              prefix: const Padding(
+                                padding: EdgeInsets.only(left: 16, right: 8),
+                                child: Icon(CupertinoIcons.mail_solid, 
+                                    size: 20, 
+                                    color: CupertinoColors.systemGrey),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+                              decoration: const BoxDecoration(
+                                color: CupertinoColors.transparent,
+                              ),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ),
+
+                          // Campo contraseña
+                          Container(
+                            decoration: BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: CupertinoColors.systemGrey5,
+                                  width: 0.5,
+                                ),
+                              ),
+                            ),
+                            child: CupertinoTextField(
+                              controller: passwordController,
+                              obscureText: _obscurePassword,
+                              placeholder: 'Contraseña',
+                              placeholderStyle: TextStyle(
+                                color: CupertinoColors.systemGrey,
+                                fontWeight: FontWeight.w400,
+                              ),
+                              prefix: const Padding(
+                                padding: EdgeInsets.only(left: 16, right: 8),
+                                child: Icon(CupertinoIcons.lock_fill, 
+                                    size: 20, 
+                                    color: CupertinoColors.systemGrey),
+                              ),
+                              suffix: GestureDetector(
+                                onTap: () => setState(() => _obscurePassword = !_obscurePassword),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  child: Icon(
+                                    _obscurePassword
+                                        ? CupertinoIcons.eye_slash
+                                        : CupertinoIcons.eye,
+                                    size: 18,
+                                    color: CupertinoColors.systemGrey,
+                                  ),
+                                ),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+                              decoration: const BoxDecoration(
+                                color: CupertinoColors.transparent,
+                              ),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ),
+
+                          // Recordarme
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Icon(Icons.medical_services, size: 50, color: Colors.grey),
-                                SizedBox(height: 8),
-                                Text('Imagen no disponible', style: TextStyle(color: Colors.grey)),
+                                Text(
+                                  'Recordarme',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: CupertinoColors.systemGrey,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                                CupertinoSwitch(
+                                  value: _rememberMe,
+                                  onChanged: (v) => setState(() => _rememberMe = v),
+                                ),
                               ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Botón iniciar sesión
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton.filled(
+                        onPressed: _isLoading ? null : _signIn,
+                        borderRadius: BorderRadius.circular(12),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: _isLoading
+                            ? const CupertinoActivityIndicator()
+                            : const Text(
+                                'Iniciar sesión',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 16,
+                                ),
+                              ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Enlaces secundarios
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          onPressed: () {
+                            showCupertinoDialog(
+                              context: context,
+                              builder: (_) => const CupertinoAlertDialog(
+                                title: Text('Recuperar contraseña'),
+                                content: Text('Función de recuperar contraseña (próximamente)'),
+                                actions: [
+                                  CupertinoDialogAction(
+                                    child: Text('Aceptar'),
+                                  ),
+                                ],
+                              ),
                             );
                           },
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) return child;
-                            return const Center(child: CircularProgressIndicator());
+                          child: Text(
+                            '¿Olvidó su contraseña?',
+                            style: TextStyle(
+                              color: CupertinoColors.systemBlue,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ),
+
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          onPressed: () {
+                            showCupertinoDialog(
+                              context: context,
+                              builder: (_) => const CupertinoAlertDialog(
+                                title: Text('Registro'),
+                                content: Text('Registro de nueva cuenta (próximamente)'),
+                                actions: [
+                                  CupertinoDialogAction(
+                                    child: Text('Aceptar'),
+                                  ),
+                                ],
+                              ),
+                            );
                           },
+                          child: Text(
+                            'Crear cuenta',
+                            style: TextStyle(
+                              color: CupertinoColors.systemBlue,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
                         ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    // Ayuda
+                    Center(
+                      child: Column(
+                        children: [
+                          Text(
+                            '¿Necesitas ayuda?',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: CupertinoColors.systemGrey,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _isLoading
+                              ? const CupertinoActivityIndicator(radius: 10)
+                              : const SizedBox.shrink(),
+                        ],
                       ),
                     ),
-                  ),
-
-                  const SizedBox(height: 20),
-                  TextFormField(
-                    controller: emailController,
-                    decoration: const InputDecoration(
-                      labelText: 'Correo electrónico',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Por favor ingresa tu correo';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  TextFormField(
-                    controller: passwordController,
-                    obscureText: _obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: "Contraseña",
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return "Por favor ingresa tu contraseña";
-                      }
-                      return null;
-                    },
-                  ),
-
-                  const SizedBox(height: 24),
-                  TextButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('🔐 Función de recuperar contraseña')),
-                      );
-                    },
-                    child: const Text(
-                      '¿Olvidó su contraseña?',
-                      style: TextStyle(color: Colors.blue),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-
-                  ElevatedButton(
-                    onPressed: () async {
-                      if (_formKey.currentState!.validate()) {
-                        try {
-                          UserCredential userCredential =
-                              await _auth.signInWithEmailAndPassword(
-                            email: emailController.text.trim(),
-                            password: passwordController.text.trim(),
-                          );
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text("Bienvenido ${userCredential.user!.email}")),
-                          );
-
-                          Navigator.pushReplacementNamed(context, Routes.home);
-
-                        } on FirebaseAuthException catch (e) {
-                          String message = "";
-                          if (e.code == 'user-not-found') {
-                            message = "Usuario no encontrado";
-                          } else if (e.code == 'wrong-password') {
-                            message = "Contraseña incorrecta";
-                          } else {
-                            message = e.message!;
-                          }
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(message)),
-                          );
-                        }
-                      }
-                    },
-                    child: const Text("Iniciar sesión"),
-                  ),
-
-                  const SizedBox(height: 16),
-                  OutlinedButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('🆕 Registro de nueva cuenta (próximamente)')),
-                      );
-                    },
-                    child: const Text('Crear una cuenta nueva'),
-                  ),
-                ],
+                    const SizedBox(height: 40),
+                  ],
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
