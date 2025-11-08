@@ -20,6 +20,7 @@ class _CitasPageState extends State<CitasPage> {
   TimeOfDay? _horaFin;
   String? _citaEnEdicion;
   String? _nombreUsuario;
+  final Set<String> _citasEliminando = {}; // Rastrea citas en proceso de eliminación
 
   @override
   void initState() {
@@ -152,29 +153,6 @@ class _CitasPageState extends State<CitasPage> {
     });
   }
 
-  Future<void> _eliminarCita(String id) async {
-    final confirm = await showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Confirmar eliminación"),
-        content: const Text("¿Seguro que deseas eliminar esta cita?"),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text("Cancelar")),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text("Eliminar")),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await _firestore.collection('citas').doc(id).delete();
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Cita eliminada")));
-    }
-  }
 
   void _editarCita(String id, Map<String, dynamic> data) {
     setState(() {
@@ -325,7 +303,10 @@ class _CitasPageState extends State<CitasPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final citas = snapshot.data!.docs;
+                final citas = snapshot.data!.docs
+                    .where((doc) => !_citasEliminando.contains(doc.id))
+                    .toList();
+                    
                 if (citas.isEmpty) {
                   return const Padding(
                     padding: EdgeInsets.all(16.0),
@@ -344,35 +325,149 @@ class _CitasPageState extends State<CitasPage> {
                     final inicio = (data['horaInicio'] as Timestamp?)?.toDate();
                     final fin = (data['horaFin'] as Timestamp?)?.toDate();
 
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      child: ListTile(
-                        title: Text(
-                          '${data['motivo'] ?? 'Sin motivo'}',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 16),
+                    return Dismissible(
+                      key: ValueKey('cita_${cita.id}'),
+                      direction: DismissDirection.horizontal,
+                      resizeDuration: const Duration(milliseconds: 200),
+                      movementDuration: const Duration(milliseconds: 200),
+                      // Fondo izquierdo (se muestra al deslizar startToEnd - desde la izquierda hacia la derecha)
+                      background: Container(
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.only(left: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.blue,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        subtitle: Text(
-                          '👨‍⚕️ Médico: ${data['medico'] ?? ''}\n'
-                          '🧍 Paciente: ${data['paciente'] ?? ''}\n'
-                          '📅 ${fecha?.toLocal().toString().split(" ")[0]}\n'
-                          '🕒 ${inicio?.hour}:${inicio?.minute.toString().padLeft(2, '0')} - ${fin?.hour}:${fin?.minute.toString().padLeft(2, '0')}',
-                        ),
-                        trailing: Wrap(
-                          spacing: 6,
+                        child: const Row(
                           children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.blue),
-                              onPressed: () => _editarCita(cita.id, data),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => _eliminarCita(cita.id),
+                            Icon(Icons.edit, color: Colors.white, size: 32),
+                            SizedBox(width: 10),
+                            Text(
+                              'Editar',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
                             ),
                           ],
+                        ),
+                      ),
+                      // Fondo derecho (se muestra al deslizar endToStart - desde la derecha hacia la izquierda)
+                      secondaryBackground: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Text(
+                              'Eliminar',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                            ),
+                            SizedBox(width: 10),
+                            Icon(Icons.delete, color: Colors.white, size: 32),
+                          ],
+                        ),
+                      ),
+                      confirmDismiss: (direction) async {
+                        if (direction == DismissDirection.startToEnd) {
+                          // Deslizar hacia la derecha → Editar (NO eliminar el widget)
+                          _editarCita(cita.id, data);
+                          // Hacer scroll al formulario
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            Scrollable.ensureVisible(
+                              context,
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          });
+                          return false; // No eliminar el widget, solo cargar datos
+                        } else if (direction == DismissDirection.endToStart) {
+                          // Deslizar hacia la izquierda → Eliminar (sí eliminar el widget)
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text("Confirmar eliminación"),
+                              content: const Text("¿Seguro que deseas eliminar esta cita?"),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, false),
+                                  child: const Text("Cancelar"),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text("Eliminar"),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirm == true) {
+                            // Marcar como eliminando y eliminar inmediatamente
+                            if (mounted) {
+                              setState(() {
+                                _citasEliminando.add(cita.id);
+                              });
+                              // Eliminar inmediatamente de Firestore
+                              _firestore.collection('citas').doc(cita.id).delete().then((_) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text("Cita eliminada")),
+                                  );
+                                  // Limpiar después de un pequeño delay para asegurar que el stream se actualice
+                                  Future.delayed(const Duration(milliseconds: 100), () {
+                                    if (mounted) {
+                                      setState(() {
+                                        _citasEliminando.remove(cita.id);
+                                      });
+                                    }
+                                  });
+                                }
+                              }).catchError((error) {
+                                // Si hay error, quitar de la lista para que vuelva a aparecer
+                                if (mounted) {
+                                  setState(() {
+                                    _citasEliminando.remove(cita.id);
+                                  });
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text("Error al eliminar: $error")),
+                                  );
+                                }
+                              });
+                            }
+                          }
+                          return confirm == true;
+                        }
+                        return false;
+                      },
+                      onDismissed: (direction) {
+                        // La eliminación ya se maneja en confirmDismiss
+                        // Este callback existe para cumplir con la API de Dismissible
+                      },
+                      child: Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8),
+                        elevation: 4,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        child: ListTile(
+                          title: Text(
+                            '${data['motivo'] ?? 'Sin motivo'}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          subtitle: Text(
+                            '👨‍⚕️ Médico: ${data['medico'] ?? ''}\n'
+                            '🧍 Paciente: ${data['paciente'] ?? ''}\n'
+                            '📅 ${fecha?.toLocal().toString().split(" ")[0]}\n'
+                            '🕒 ${inicio?.hour}:${inicio?.minute.toString().padLeft(2, '0')} - ${fin?.hour}:${fin?.minute.toString().padLeft(2, '0')}',
+                          ),
                         ),
                       ),
                     );

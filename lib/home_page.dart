@@ -13,6 +13,16 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   String userName = "Usuario";
+  int _recommendationIndex = 0;
+  
+  // 5 recomendaciones médicas guardadas
+  final List<String> _recomendaciones = [
+    "Para aliviar un dolor de cabeza leve, hidrátate y descansa en un lugar tranquilo.",
+    "Si tienes dolor muscular, aplica compresas tibias y realiza estiramientos suaves.",
+    "Para molestias estomacales, evita comidas grasosas y bebe agua con pequeños sorbos.",
+    "En caso de resfriado leve, descansa bien y toma líquidos calientes.",
+    "Si sientes mareo, recuéstate y respira profundamente hasta que pase.",
+  ];
 
   @override
   void initState() {
@@ -20,6 +30,7 @@ class _HomePageState extends State<HomePage> {
     _loadUserData();
   }
 
+  /// Cargar datos del usuario desde Firestore
   Future<void> _loadUserData() async {
     final user = _auth.currentUser;
     if (user != null) {
@@ -27,12 +38,21 @@ class _HomePageState extends State<HomePage> {
           .collection('usuarios')
           .doc(user.uid)
           .get();
+
       if (doc.exists && doc.data()!.containsKey('nombre')) {
         setState(() {
           userName = doc['nombre'];
         });
       }
     }
+  }
+
+  /// Este método será llamado al hacer Pull To Refresh
+  Future<void> _refreshData() async {
+    await _loadUserData();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Datos actualizados ✅")),
+    );
   }
 
   int _selectedIndex = 0;
@@ -57,105 +77,110 @@ class _HomePageState extends State<HomePage> {
         title: const Text("Menú Principal"),
         backgroundColor: Colors.teal,
         elevation: 3,
+        automaticallyImplyLeading: false, // Quita el botón de regreso
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "¡Hola, $userName! ¿En qué podemos ayudarte?",
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.teal,
+
+      body: RefreshIndicator(
+        onRefresh: _refreshData,
+        color: Colors.teal,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "¡Hola, $userName! ¿En qué podemos ayudarte?",
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.teal,
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            // OPCIONES PRINCIPALES
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _mainOptionCard(
-                  context,
-                  icon: Icons.calendar_today,
-                  title: "Agendar una Cita",
-                  onTap: () {
-                    // Redirigir directamente a la pantalla de citas
-                    Navigator.pushNamed(context, Routes.citas);
-                  },
-                ),
-                _mainOptionCard(
-                  context,
-                  icon: Icons.health_and_safety,
-                  title: "Consejos Médicos",
-                  onTap: () {},
-                ),
-              ],
-            ),
+              // OPCIONES PRINCIPALES
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _mainOptionCard(
+                    context,
+                    icon: Icons.calendar_today,
+                    title: "Agendar una Cita",
+                    onTap: () {
+                      Navigator.pushNamed(context, Routes.citas);
+                    },
+                  ),
+                  _mainOptionCard(
+                    context,
+                    icon: Icons.health_and_safety,
+                    title: "Consejos Médicos",
+                    onTap: () {
+                      // Muestra una recomendación diferente cada vez
+                      setState(() {
+                        _recommendationIndex = (_recommendationIndex + 1) % _recomendaciones.length;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(_recomendaciones[_recommendationIndex]),
+                          duration: const Duration(seconds: 4),
+                          backgroundColor: Colors.teal,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
 
-            const SizedBox(height: 25),
-            const Text(
-              "Consejos Médicos Rápidos:",
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.teal),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              "• Para aliviar un dolor de cabeza leve, hidrátate y descansa en un lugar tranquilo.\n"
-              "• Si tienes dolor muscular, aplica compresas tibias y realiza estiramientos suaves.\n"
-              "• Para molestias estomacales, evita comidas grasosas y bebe agua con pequeños sorbos.\n"
-              "• En caso de resfriado leve, descansa bien y toma líquidos calientes.\n"
-              "• Si sientes mareo, recuéstate y respira profundamente hasta que pase.",
-              style: TextStyle(fontSize: 16, color: Colors.black87),
-            ),
+              const SizedBox(height: 25),
+              const Text(
+                "Consejos Médicos Rápidos:",
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.teal),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "• Para aliviar un dolor de cabeza leve, hidrátate y descansa en un lugar tranquilo.\n"
+                "• Si tienes dolor muscular, aplica compresas tibias y realiza estiramientos suaves.\n"
+                "• Para molestias estomacales, evita comidas grasosas y bebe agua con pequeños sorbos.\n"
+                "• En caso de resfriado leve, descansa bien y toma líquidos calientes.\n"
+                "• Si sientes mareo, recuéstate y respira profundamente hasta que pase.",
+                style: TextStyle(fontSize: 16, color: Colors.black87),
+              ),
 
-            const SizedBox(height: 25),
-            const Text(
-              "Especialistas disponibles:",
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.teal),
-            ),
-            const SizedBox(height: 10),
-            _buildSpecialistsList(),
+              const SizedBox(height: 25),
+              const Text(
+                "Especialistas disponibles:",
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.teal),
+              ),
+              const SizedBox(height: 10),
+              _buildSpecialistsList(),
 
-            const SizedBox(height: 25),
-            const Text(
-              "Recomendaciones del día:",
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.teal),
-            ),
-            const SizedBox(height: 10),
-            _recommendationCard(),
+              const SizedBox(height: 30),
 
-            const SizedBox(height: 30),
-
-            // BOTÓN DE CERRAR SESIÓN
-            ElevatedButton(
-              onPressed: () async {
-                await _auth.signOut();
-                Navigator.pushReplacementNamed(context, Routes.login);
-              },
-              child: const Text("Cerrar sesión"),
-            ),
-          ],
+              // BOTÓN DE CERRAR SESIÓN
+              ElevatedButton(
+                onPressed: () async {
+                  await _auth.signOut();
+                  Navigator.pushReplacementNamed(context, Routes.login);
+                },
+                child: const Text("Cerrar sesión"),
+              ),
+            ],
+          ),
         ),
       ),
 
-      // NAVIGATION BAR
       bottomNavigationBar: BottomNavigationBar(
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
           BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Mensajes'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.settings), label: 'Configuración'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Configuración'),
         ],
         currentIndex: _selectedIndex,
         selectedItemColor: Colors.teal,
@@ -220,19 +245,4 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Tarjeta de recomendaciones
-  Widget _recommendationCard() {
-    return Card(
-      elevation: 4,
-      color: Colors.teal[50],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Text(
-          "Recuerda revisar tus próximas citas y mantener tus datos médicos actualizados para recibir una mejor atención.",
-          style: TextStyle(fontSize: 16, color: Colors.black87),
-        ),
-      ),
-    );
-  }
 }
