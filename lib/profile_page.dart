@@ -19,6 +19,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   bool _loading = false;
 
+ 
+  String _selectedRole = "paciente";
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +43,13 @@ class _ProfilePageState extends State<ProfilePage> {
     _birthplaceController.text = (data['lugarNacimiento'] ?? '').toString();
     _conditionsController.text = (data['padecimientos'] ?? '').toString();
     _phoneController.text = (data['telefono'] ?? '').toString();
+
+    /// 🔥 Cargar rol si existe en Firestore
+    if (data['rol'] != null) {
+      _selectedRole = data['rol'];
+    }
+
+    setState(() {});
   }
 
   Future<void> _saveProfile() async {
@@ -67,6 +77,7 @@ class _ProfilePageState extends State<ProfilePage> {
         'telefono': _phoneController.text.trim(),
         'email': user.email,
         'uid': user.uid,
+        'rol': _selectedRole, 
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
@@ -114,6 +125,26 @@ class _ProfilePageState extends State<ProfilePage> {
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
+
+             
+              DropdownButtonFormField<String>(
+                value: _selectedRole,
+                decoration: const InputDecoration(
+                  labelText: "Rol",
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: "paciente", child: Text("Paciente")),
+                  DropdownMenuItem(value: "medico", child: Text("Médico")),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    _selectedRole = value!;
+                  });
+                },
+              ),
+
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(

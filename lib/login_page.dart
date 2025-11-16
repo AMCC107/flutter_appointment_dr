@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'routes.dart';
 
 class LoginPage extends StatefulWidget {
@@ -14,8 +15,20 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance; 
 
   bool _obscurePassword = true;
+
+  /// Rol seleccionado 
+  String _selectedRole = "paciente"; 
+
+  /// Guardar rol en Firestore
+  Future<void> _guardarRolEnFirestore(String uid) async {
+    await _firestore.collection("usuarios").doc(uid).set(
+      {"rol": _selectedRole},
+      SetOptions(merge: true),
+    );
+  }
 
   /// Recarga del formulario 
   Future<void> _recargarFormulario() async {
@@ -24,6 +37,7 @@ class _LoginPageState extends State<LoginPage> {
       emailController.clear();
       passwordController.clear();
       _obscurePassword = true;
+      _selectedRole = "paciente"; 
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -34,11 +48,10 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      /// TAP en cualquier lugar → Cerrar teclado
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         body: RefreshIndicator(
-          onRefresh: _recargarFormulario, // Pull-to-Refresh
+          onRefresh: _recargarFormulario,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(16.0),
@@ -54,12 +67,13 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  /// GESTO: Doble Tap sobre la imagen
                   Center(
                     child: GestureDetector(
                       onDoubleTap: () {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("👋 Bienvenido a DoctorAppointmentApp")),
+                          const SnackBar(
+                            content: Text("👋 Bienvenido a DoctorAppointmentApp"),
+                          ),
                         );
                       },
                       child: ClipRRect(
@@ -89,6 +103,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
 
                   const SizedBox(height: 20),
+
                   TextFormField(
                     controller: emailController,
                     decoration: const InputDecoration(
@@ -102,6 +117,7 @@ class _LoginPageState extends State<LoginPage> {
                       return null;
                     },
                   ),
+
                   const SizedBox(height: 16),
 
                   TextFormField(
@@ -115,8 +131,8 @@ class _LoginPageState extends State<LoginPage> {
                           _obscurePassword ? Icons.visibility_off : Icons.visibility,
                         ),
                         onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
                           });
                         },
                       ),
@@ -129,18 +145,39 @@ class _LoginPageState extends State<LoginPage> {
                     },
                   ),
 
+                  const SizedBox(height: 20),
+
+                 
+                  DropdownButtonFormField<String>(
+                    value: _selectedRole,
+                    decoration: const InputDecoration(
+                      labelText: "Selecciona tu rol",
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: "paciente", child: Text("Paciente")),
+                      DropdownMenuItem(value: "medico", child: Text("Médico")),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedRole = value!;
+                      });
+                    },
+                  ),
+
                   const SizedBox(height: 24),
+
                   TextButton(
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('🔐 Función de recuperar contraseña')),
+                        const SnackBar(
+                          content: Text('🔐 Función de recuperar contraseña'),
+                        ),
                       );
                     },
-                    child: const Text(
-                      '¿Olvidó su contraseña?',
-                      style: TextStyle(color: Colors.blue),
-                    ),
+                    child: const Text('¿Olvidó su contraseña?', style: TextStyle(color: Colors.blue)),
                   ),
+
                   const SizedBox(height: 10),
 
                   ElevatedButton(
@@ -152,6 +189,9 @@ class _LoginPageState extends State<LoginPage> {
                             email: emailController.text.trim(),
                             password: passwordController.text.trim(),
                           );
+
+                          // 👈 Guardar rol después de iniciar sesión
+                          await _guardarRolEnFirestore(userCredential.user!.uid);
 
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text("Bienvenido ${userCredential.user!.email}")),
@@ -178,10 +218,13 @@ class _LoginPageState extends State<LoginPage> {
                   ),
 
                   const SizedBox(height: 16),
+
                   OutlinedButton(
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('🆕 Registro de nueva cuenta (próximamente)')),
+                        const SnackBar(
+                          content: Text('🆕 Registro de nueva cuenta (próximamente)'),
+                        ),
                       );
                     },
                     child: const Text('Crear una cuenta nueva'),

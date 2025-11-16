@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'routes.dart';
 
 class HomePage extends StatefulWidget {
@@ -12,10 +13,11 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
   String userName = "Usuario";
+  String userRole = ""; // VACÍO para detectar carga real
   int _recommendationIndex = 0;
-  
-  // 5 recomendaciones médicas guardadas
+
   final List<String> _recomendaciones = [
     "Para aliviar un dolor de cabeza leve, hidrátate y descansa en un lugar tranquilo.",
     "Si tienes dolor muscular, aplica compresas tibias y realiza estiramientos suaves.",
@@ -30,54 +32,61 @@ class _HomePageState extends State<HomePage> {
     _loadUserData();
   }
 
-  /// Cargar datos del usuario desde Firestore
+  /// Cargar datos reales desde Firestore
   Future<void> _loadUserData() async {
     final user = _auth.currentUser;
-    if (user != null) {
-      final doc = await FirebaseFirestore.instance
-          .collection('usuarios')
-          .doc(user.uid)
-          .get();
+    if (user == null) return;
 
-      if (doc.exists && doc.data()!.containsKey('nombre')) {
-        setState(() {
-          userName = doc['nombre'];
-        });
-      }
+    final snap = await FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(user.uid)
+        .get();
+
+    if (snap.exists) {
+      final data = snap.data()!;
+      setState(() {
+        userName = data['nombre'] ?? "Usuario";
+        userRole = data['rol'] ?? "paciente";
+      });
     }
+
+    // Guardar rol en SharedPreferences 
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_role', userRole);
   }
 
-  /// Este método será llamado al hacer Pull To Refresh
+  /// Recargar todo con pull-to-refresh
   Future<void> _refreshData() async {
     await _loadUserData();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Datos actualizados ✅")),
+      const SnackBar(content: Text("Datos actualizados")),
     );
   }
 
   int _selectedIndex = 0;
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    setState(() => _selectedIndex = index);
 
-    if (index == 1) {
-      Navigator.pushNamed(context, Routes.messages);
-    } else if (index == 2) {
-      Navigator.pushNamed(context, Routes.settings);
-    }
+    if (index == 1) Navigator.pushNamed(context, Routes.messages);
+    if (index == 2) Navigator.pushNamed(context, Routes.settings);
   }
 
   @override
   Widget build(BuildContext context) {
+ 
+    if (userRole.isEmpty) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: Colors.teal)),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.blueGrey[50],
       appBar: AppBar(
         title: const Text("Menú Principal"),
         backgroundColor: Colors.teal,
-        elevation: 3,
-        automaticallyImplyLeading: false, // Quita el botón de regreso
+        automaticallyImplyLeading: false,
       ),
 
       body: RefreshIndicator(
@@ -89,88 +98,88 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              
+              Text("¡Hola, $userName!",
+                  style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.teal)),
+              const SizedBox(height: 6),
               Text(
-                "¡Hola, $userName! ¿En qué podemos ayudarte?",
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.teal,
-                ),
+                userRole == "medico"
+                    ? "Panel de control médico"
+                    : "¿En qué podemos ayudarte?",
+                style: TextStyle(
+                    fontSize: 16, color: Colors.teal[700], fontStyle: FontStyle.italic),
               ),
-              const SizedBox(height: 20),
+              Chip(
+                label: Text(
+                  userRole.toUpperCase(),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+                backgroundColor: userRole == 'medico' ? Colors.red : Colors.green,
+              ),
 
-              // OPCIONES PRINCIPALES
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              const SizedBox(height: 30),
+
+           
+              Column(
                 children: [
-                  _mainOptionCard(
-                    context,
-                    icon: Icons.calendar_today,
-                    title: "Agendar una Cita",
-                    onTap: () {
-                      Navigator.pushNamed(context, Routes.citas);
-                    },
-                  ),
-                  _mainOptionCard(
-                    context,
-                    icon: Icons.health_and_safety,
-                    title: "Consejos Médicos",
-                    onTap: () {
-                      // Muestra una recomendación diferente cada vez
-                      setState(() {
-                        _recommendationIndex = (_recommendationIndex + 1) % _recomendaciones.length;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(_recomendaciones[_recommendationIndex]),
-                          duration: const Duration(seconds: 4),
-                          backgroundColor: Colors.teal,
+                 
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                   
+                      if (userRole == "medico")
+                        _mainOptionCard(
+                          icon: Icons.dashboard,
+                          title: "Ver Citas",
+                          onTap: () {
+                            Navigator.pushNamed(context, Routes.dashboard);
+                          },
                         ),
-                      );
-                    },
+
+                    
+                      if (userRole == "paciente")
+                        _mainOptionCard(
+                          icon: Icons.calendar_today,
+                          title: "Agendar Cita",
+                          onTap: () {
+                            Navigator.pushNamed(context, Routes.citas);
+                          },
+                        ),
+
+                     
+                      if (userRole == "medico" || userRole == "paciente")
+                        const SizedBox(width: 20),
+
+                     
+                      _mainOptionCard(
+                        icon: Icons.health_and_safety,
+                        title: "Consejos Médicos",
+                        onTap: () {
+                          setState(() {
+                            _recommendationIndex =
+                                (_recommendationIndex + 1) % _recomendaciones.length;
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(_recomendaciones[_recommendationIndex]),
+                              backgroundColor: Colors.teal,
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ],
               ),
 
-              const SizedBox(height: 25),
-              const Text(
-                "Consejos Médicos Rápidos:",
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.teal),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                "• Para aliviar un dolor de cabeza leve, hidrátate y descansa en un lugar tranquilo.\n"
-                "• Si tienes dolor muscular, aplica compresas tibias y realiza estiramientos suaves.\n"
-                "• Para molestias estomacales, evita comidas grasosas y bebe agua con pequeños sorbos.\n"
-                "• En caso de resfriado leve, descansa bien y toma líquidos calientes.\n"
-                "• Si sientes mareo, recuéstate y respira profundamente hasta que pase.",
-                style: TextStyle(fontSize: 16, color: Colors.black87),
-              ),
-
-              const SizedBox(height: 25),
-              const Text(
-                "Especialistas disponibles:",
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.teal),
-              ),
-              const SizedBox(height: 10),
-              _buildSpecialistsList(),
-
               const SizedBox(height: 30),
 
-              // BOTÓN DE CERRAR SESIÓN
-              ElevatedButton(
-                onPressed: () async {
-                  await _auth.signOut();
-                  Navigator.pushReplacementNamed(context, Routes.login);
-                },
-                child: const Text("Cerrar sesión"),
-              ),
+              
+              if (userRole == "medico") _buildDoctorQuickActions(),
             ],
           ),
         ),
@@ -189,16 +198,18 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Tarjetas principales
-  Widget _mainOptionCard(BuildContext context,
-      {required IconData icon,
-      required String title,
-      required VoidCallback onTap}) {
+ 
+  Widget _mainOptionCard({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 150,
-        padding: const EdgeInsets.all(20),
+        width: 140, 
+        height: 140, 
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.teal[100],
           borderRadius: BorderRadius.circular(15),
@@ -212,37 +223,82 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: 40, color: Colors.teal[800]),
             const SizedBox(height: 10),
-            Text(title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600)),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // Lista de especialistas
-  Widget _buildSpecialistsList() {
-    final specialists = [
-      "Cardiólogo",
-      "Pediatra",
-      "Dermatólogo",
-      "Ginecólogo",
-      "Traumatólogo",
-    ];
-    return Column(
-      children: specialists
-          .map((s) => ListTile(
-                leading: const Icon(Icons.local_hospital, color: Colors.teal),
-                title: Text(s, style: const TextStyle(fontSize: 16)),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              ))
-          .toList(),
+ 
+  Widget _buildDoctorQuickActions() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.teal[50],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _quickActionItem(
+                  icon: Icons.today,
+                  label: "Citas Hoy",
+                  onTap: () => Navigator.pushNamed(context, Routes.dashboard)),
+              _quickActionItem(
+                  icon: Icons.people,
+                  label: "Pacientes",
+                  onTap: () => Navigator.pushNamed(context, Routes.dashboard)),
+              _quickActionItem(
+                  icon: Icons.bar_chart,
+                  label: "Estadísticas",
+                  onTap: () => Navigator.pushNamed(context, Routes.dashboard)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            "Accede al Dashboard para ver estadísticas completas",
+            style: TextStyle(
+                fontSize: 12, color: Colors.teal, fontStyle: FontStyle.italic),
+          ),
+        ],
+      ),
     );
   }
 
+  Widget _quickActionItem({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          CircleAvatar(
+            backgroundColor: Colors.teal,
+            child: Icon(icon, color: Colors.white, size: 20),
+          ),
+          const SizedBox(height: 5),
+          Text(label,
+              style:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
 }
