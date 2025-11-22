@@ -8,6 +8,7 @@ import 'privacy_page.dart';
 import 'about_page.dart';
 import 'citas_page.dart';
 import 'dashboard_page.dart';
+import 'screens/graphics_page.dart';
 
 class Routes {
   static const String login = '/login';
@@ -19,6 +20,7 @@ class Routes {
   static const String about = '/about';
   static const String citas = '/citas';
   static const String dashboard = '/dashboard';
+  static const String graphics = '/graphics';
 
   
   static Route<dynamic> generateRoute(RouteSettings routeSettings) {
@@ -33,6 +35,8 @@ class Routes {
         return MaterialPageRoute(builder: (_) => const CitasPage());
       case dashboard:
         return MaterialPageRoute(builder: (_) => const DashboardPage());
+      case graphics:
+        return MaterialPageRoute(builder: (_) => const GraphicsPage());
       case messages:
         return MaterialPageRoute(builder: (_) => const MessagesPage());
       case settings:

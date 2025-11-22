@@ -266,7 +266,7 @@ class _HomePageState extends State<HomePage> {
               _quickActionItem(
                   icon: Icons.bar_chart,
                   label: "Estadísticas",
-                  onTap: () => Navigator.pushNamed(context, Routes.dashboard)),
+                  onTap: () => Navigator.pushNamed(context, Routes.graphics)),
             ],
           ),
           const SizedBox(height: 10),
