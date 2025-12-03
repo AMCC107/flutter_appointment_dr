@@ -9,6 +9,10 @@ import 'about_page.dart';
 import 'citas_page.dart';
 import 'dashboard_page.dart';
 import 'screens/graphics_page.dart';
+import 'pages/especialistas_page.dart';
+import 'pages/medico_detalle_page.dart';
+import 'models/especialidad.dart';
+import 'models/medico.dart';
 
 class Routes {
   static const String login = '/login';
@@ -21,6 +25,8 @@ class Routes {
   static const String citas = '/citas';
   static const String dashboard = '/dashboard';
   static const String graphics = '/graphics';
+  static const String especialistas = '/especialistas';
+  static const String medicoDetalle = '/medico-detalle';
 
   
   static Route<dynamic> generateRoute(RouteSettings routeSettings) {
@@ -32,7 +38,20 @@ class Routes {
       case profile:
         return MaterialPageRoute(builder: (_) => const ProfilePage());
       case citas:
-        return MaterialPageRoute(builder: (_) => const CitasPage());
+        final medico = routeSettings.arguments as Medico?;
+        return MaterialPageRoute(
+          builder: (_) => CitasPage(medicoSeleccionado: medico),
+        );
+      case especialistas:
+        final especialidad = routeSettings.arguments as Especialidad;
+        return MaterialPageRoute(
+          builder: (_) => EspecialistasPage(especialidad: especialidad),
+        );
+      case medicoDetalle:
+        final medico = routeSettings.arguments as Medico;
+        return MaterialPageRoute(
+          builder: (_) => MedicoDetallePage(medico: medico),
+        );
       case dashboard:
         return MaterialPageRoute(builder: (_) => const DashboardPage());
       case graphics:

@@ -82,7 +82,7 @@ class _DashboardPageState extends State<DashboardPage> {
         elevation: 4,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _firestore.collection('citas').snapshots(),
+        stream: _firestore.collection('citas').snapshots(), // Todas las citas incluyendo eliminadas
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -91,12 +91,34 @@ class _DashboardPageState extends State<DashboardPage> {
           final citas = snapshot.data!.docs;
           final now = DateTime.now();
 
-          // Calcular estadísticas
+          // Calcular estadísticas usando todas las citas
           final totalCitas = citas.length;
+          final citasActivas = citas.where((cita) {
+            final data = cita.data() as Map<String, dynamic>;
+            return (data['estado'] ?? 'activa') == 'activa' && 
+                   (data['eliminado'] ?? false) == false;
+          }).length;
+          
+          final citasCanceladas = citas.where((cita) {
+            final data = cita.data() as Map<String, dynamic>;
+            return (data['estado'] ?? '') == 'cancelada' || 
+                   (data['eliminado'] ?? false) == true;
+          }).length;
+          
+          final citasCompletadas = citas.where((cita) {
+            final data = cita.data() as Map<String, dynamic>;
+            return (data['estado'] ?? '') == 'completada';
+          }).length;
+
           final citasPendientes = citas.where((cita) {
             final data = cita.data() as Map<String, dynamic>;
             final fechaCita = (data['fecha'] as Timestamp?)?.toDate();
-            return fechaCita != null && fechaCita.isAfter(now);
+            final eliminado = data['eliminado'] ?? false;
+            final estado = data['estado'] ?? 'activa';
+            return fechaCita != null && 
+                   fechaCita.isAfter(now) && 
+                   !eliminado && 
+                   estado == 'activa';
           }).length;
 
           // Obtener pacientes únicos
@@ -109,6 +131,11 @@ class _DashboardPageState extends State<DashboardPage> {
             }
           }
           final totalPacientes = pacientesUnicos.length;
+          
+          // Calcular tasa de cancelación
+          final tasaCancelacion = totalCitas > 0 
+              ? (citasCanceladas / totalCitas * 100).toStringAsFixed(1)
+              : '0.0';
 
           return SingleChildScrollView( 
             padding: const EdgeInsets.all(16.0),
@@ -143,11 +170,11 @@ class _DashboardPageState extends State<DashboardPage> {
                   childAspectRatio: 1.0, 
                   children: [
                     _buildStatCard(
-                      title: 'Total de Citas',
-                      value: totalCitas.toString(),
-                      icon: Icons.calendar_today,
-                      color: Colors.blue,
-                      subtitle: 'Citas creadas',
+                      title: 'Citas Activas',
+                      value: citasActivas.toString(),
+                      icon: Icons.check_circle,
+                      color: Colors.green,
+                      subtitle: 'Citas vigentes',
                     ),
                     _buildStatCard(
                       title: 'Citas Pendientes',
@@ -157,20 +184,52 @@ class _DashboardPageState extends State<DashboardPage> {
                       subtitle: 'Próximas citas',
                     ),
                     _buildStatCard(
-                      title: 'Total Pacientes',
-                      value: totalPacientes.toString(),
-                      icon: Icons.people,
-                      color: Colors.green,
-                      subtitle: 'Pacientes únicos',
+                      title: 'Canceladas',
+                      value: citasCanceladas.toString(),
+                      icon: Icons.cancel,
+                      color: Colors.red,
+                      subtitle: '$tasaCancelacion% del total',
                     ),
                     _buildStatCard(
-                      title: 'Citas Hoy',
-                      value: _getCitasHoy(citas).toString(),
-                      icon: Icons.today,
-                      color: Colors.purple,
-                      subtitle: 'Citas para hoy',
+                      title: 'Completadas',
+                      value: citasCompletadas.toString(),
+                      icon: Icons.done_all,
+                      color: Colors.blue,
+                      subtitle: 'Citas finalizadas',
                     ),
                   ],
+                ),
+                
+                const SizedBox(height: 16),
+                
+                // Estadísticas adicionales
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Estadísticas Generales',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildMiniStat('Total Citas', totalCitas.toString(), Colors.blue),
+                            _buildMiniStat('Pacientes', totalPacientes.toString(), Colors.green),
+                            _buildMiniStat('Hoy', _getCitasHoy(citas).toString(), Colors.purple),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
                 
                 const SizedBox(height: 24), 
@@ -247,7 +306,12 @@ class _DashboardPageState extends State<DashboardPage> {
     final citasFuturas = citas.where((cita) {
       final data = cita.data() as Map<String, dynamic>;
       final fechaCita = (data['fecha'] as Timestamp?)?.toDate();
-      return fechaCita != null && fechaCita.isAfter(now);
+      final eliminado = data['eliminado'] ?? false;
+      final estado = data['estado'] ?? 'activa';
+      return fechaCita != null && 
+             fechaCita.isAfter(now) && 
+             !eliminado && 
+             estado == 'activa';
     }).toList();
 
     // Ordenar por fecha más próxima
@@ -356,7 +420,8 @@ class _DashboardPageState extends State<DashboardPage> {
     return citas.where((cita) {
       final data = cita.data() as Map<String, dynamic>;
       final fechaCita = (data['fecha'] as Timestamp?)?.toDate();
-      if (fechaCita == null) return false;
+      final eliminado = data['eliminado'] ?? false;
+      if (fechaCita == null || eliminado) return false;
       
       final fechaCitaNormalizada = DateTime(
         fechaCita.year,
@@ -366,5 +431,28 @@ class _DashboardPageState extends State<DashboardPage> {
       
       return fechaCitaNormalizada == hoy;
     }).length;
+  }
+
+  Widget _buildMiniStat(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
   }
 }

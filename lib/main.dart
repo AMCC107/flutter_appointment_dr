@@ -17,6 +17,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Login de pruebaDoctorAppointment App',
       initialRoute: Routes.login,
       onGenerateRoute: Routes.generateRoute,

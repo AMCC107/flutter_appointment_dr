@@ -3,6 +3,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'routes.dart';
+import 'services/firestore_service.dart';
+import 'models/especialidad.dart';
+import 'widgets/especialidad_card.dart';
+import 'pages/especialistas_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -178,6 +182,16 @@ class _HomePageState extends State<HomePage> {
 
               const SizedBox(height: 30),
 
+              // Sección de Especialidades (solo para pacientes)
+              if (userRole == "paciente") _buildEspecialidadesSection(),
+
+              const SizedBox(height: 30),
+
+              // Vista de citas para médicos (solo lectura)
+              if (userRole == "medico") _buildCitasMedico(),
+
+              const SizedBox(height: 30),
+
               
               if (userRole == "medico") _buildDoctorQuickActions(),
             ],
@@ -299,6 +313,259 @@ class _HomePageState extends State<HomePage> {
                   const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
         ],
       ),
+    );
+  }
+
+  Widget _buildCitasMedico() {
+    final firestore = FirebaseFirestore.instance;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Mis Citas Programadas',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.teal,
+          ),
+        ),
+        const SizedBox(height: 12),
+        StreamBuilder<QuerySnapshot>(
+          stream: firestore
+              .collection('citas')
+              .orderBy('fecha', descending: false)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return Center(
+                child: Text('Error: ${snapshot.error}'),
+              );
+            }
+
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Column(
+                  children: [
+                    Icon(Icons.event_available, size: 48, color: Colors.grey),
+                    SizedBox(height: 8),
+                    Text(
+                      'No hay citas programadas',
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            // Filtrar solo citas no eliminadas y futuras
+            final ahora = DateTime.now();
+            final citas = snapshot.data!.docs
+                .where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final eliminado = data['eliminado'] ?? false;
+                  final fecha = (data['fecha'] as Timestamp?)?.toDate();
+                  return !eliminado && 
+                         fecha != null && 
+                         fecha.isAfter(ahora);
+                })
+                .toList();
+
+            if (citas.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Column(
+                  children: [
+                    Icon(Icons.event_available, size: 48, color: Colors.grey),
+                    SizedBox(height: 8),
+                    Text(
+                      'No hay citas futuras programadas',
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            // Mostrar solo las próximas 5 citas
+            final proximasCitas = citas.take(5).toList();
+
+            return Column(
+              children: [
+                ...proximasCitas.map((cita) {
+                  final data = cita.data() as Map<String, dynamic>;
+                  final fecha = (data['fecha'] as Timestamp?)?.toDate();
+                  final inicio = (data['horaInicio'] as Timestamp?)?.toDate();
+                  final fin = (data['horaFin'] as Timestamp?)?.toDate();
+                  final estado = data['estado'] ?? 'activa';
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: _getColorEstado(estado),
+                        child: const Icon(Icons.calendar_today, color: Colors.white, size: 20),
+                      ),
+                      title: Text(
+                        data['motivo'] ?? 'Sin motivo',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          Text(
+                            '👤 Paciente: ${data['paciente'] ?? ''}',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          if (fecha != null)
+                            Text(
+                              '📅 ${fecha.toLocal().toString().split(" ")[0]}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          if (inicio != null && fin != null)
+                            Text(
+                              '🕒 ${inicio.hour}:${inicio.minute.toString().padLeft(2, '0')} - ${fin.hour}:${fin.minute.toString().padLeft(2, '0')}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                        ],
+                      ),
+                      trailing: Chip(
+                        label: Text(
+                          estado.toUpperCase(),
+                          style: const TextStyle(fontSize: 10, color: Colors.white),
+                        ),
+                        backgroundColor: _getColorEstado(estado),
+                      ),
+                    ),
+                  );
+                }).toList(),
+                if (citas.length > 5)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: TextButton.icon(
+                      onPressed: () {
+                        Navigator.pushNamed(context, Routes.dashboard);
+                      },
+                      icon: const Icon(Icons.arrow_forward),
+                      label: const Text('Ver todas las citas'),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Color _getColorEstado(String estado) {
+    switch (estado) {
+      case 'activa':
+        return Colors.green;
+      case 'cancelada':
+        return Colors.red;
+      case 'completada':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Widget _buildEspecialidadesSection() {
+    final firestoreService = FirestoreService();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Especialidades Disponibles',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.teal,
+          ),
+        ),
+        const SizedBox(height: 16),
+        StreamBuilder<List<Especialidad>>(
+          stream: firestoreService.getEspecialidades(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
+
+            if (snapshot.hasError) {
+              return Center(
+                child: Text('Error: ${snapshot.error}'),
+              );
+            }
+
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text('No hay especialidades disponibles'),
+              );
+            }
+
+            final especialidades = snapshot.data!;
+
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: especialidades.length,
+              itemBuilder: (context, index) {
+                final especialidad = especialidades[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: EspecialidadCard(
+                    especialidad: especialidad,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => EspecialistasPage(
+                            especialidad: especialidad,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ],
     );
   }
 }

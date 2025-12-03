@@ -201,15 +201,47 @@ class _LoginPageState extends State<LoginPage> {
 
                         } on FirebaseAuthException catch (e) {
                           String message = "";
-                          if (e.code == 'user-not-found') {
-                            message = "Usuario no encontrado";
-                          } else if (e.code == 'wrong-password') {
-                            message = "Contraseña incorrecta";
-                          } else {
-                            message = e.message!;
+                          
+                          // Usuario no encontrado o correo inválido
+                          if (e.code == 'user-not-found' || e.code == 'invalid-email') {
+                            message = "El correo electrónico no está registrado. Por favor, verifica tus datos o regístrate.";
+                          } 
+                          // Contraseña incorrecta o credenciales inválidas
+                          else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+                            message = "Contraseña incorrecta. Intenta de nuevo.";
+                          } 
+                          // Usuario deshabilitado
+                          else if (e.code == 'user-disabled') {
+                            message = "Esta cuenta ha sido deshabilitada. Contacta al administrador.";
                           }
+                          // Demasiados intentos fallidos
+                          else if (e.code == 'too-many-requests') {
+                            message = "Demasiados intentos fallidos. Por favor, intenta más tarde.";
+                          }
+                          // Error de red
+                          else if (e.code == 'network-request-failed') {
+                            message = "Error de conexión. Verifica tu conexión a internet e intenta de nuevo.";
+                          }
+                          // Otros errores de Firebase Auth
+                          else {
+                            message = e.message ?? "Ocurrió un error al iniciar sesión. Por favor, intenta de nuevo.";
+                          }
+                          
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(message)),
+                            SnackBar(
+                              content: Text(message),
+                              backgroundColor: Colors.red,
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                        } catch (e) {
+                          // Manejo de errores generales (red, servidor, etc.)
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Ocurrió un error inesperado. Por favor, intenta más tarde."),
+                              backgroundColor: Colors.red,
+                              duration: Duration(seconds: 4),
+                            ),
                           );
                         }
                       }

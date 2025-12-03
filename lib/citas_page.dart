@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../models/medico.dart';
+import '../services/cita_service.dart';
 
 class CitasPage extends StatefulWidget {
-  const CitasPage({super.key});
+  final Medico? medicoSeleccionado;
+
+  const CitasPage({super.key, this.medicoSeleccionado});
 
   @override
   State<CitasPage> createState() => _CitasPageState();
@@ -11,6 +15,7 @@ class CitasPage extends StatefulWidget {
 
 class _CitasPageState extends State<CitasPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final CitaService _citaService = CitaService();
   final TextEditingController _motivoController = TextEditingController();
   final TextEditingController _medicoController = TextEditingController();
   final TextEditingController _pacienteController = TextEditingController();
@@ -20,12 +25,17 @@ class _CitasPageState extends State<CitasPage> {
   TimeOfDay? _horaFin;
   String? _citaEnEdicion;
   String? _nombreUsuario;
+  Medico? _medico;
   final Set<String> _citasEliminando = {}; // Rastrea citas en proceso de eliminación
 
   @override
   void initState() {
     super.initState();
+    _medico = widget.medicoSeleccionado;
     _cargarNombreUsuario();
+    if (_medico != null) {
+      _medicoController.text = _medico!.nombre;
+    }
   }
 
   Future<void> _cargarNombreUsuario() async {
@@ -52,41 +62,35 @@ class _CitasPageState extends State<CitasPage> {
   }
 
   Future<void> _seleccionarHoraInicio() async {
-    final TimeOfDay? picked =
-        await showTimePicker(context: context, initialTime: TimeOfDay.now());
+    // Mostrar solo horas en intervalos de 30 minutos
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        );
+      },
+    );
     if (picked != null) {
+      // Ajustar a intervalo de 30 minutos
+      final minutosAjustados = (picked.minute / 30).round() * 30;
+      final horaAjustada = TimeOfDay(
+        hour: picked.hour + (minutosAjustados ~/ 60),
+        minute: minutosAjustados % 60,
+      );
+      
       setState(() {
-        _horaInicio = picked;
+        _horaInicio = horaAjustada;
         // Calcula automáticamente media hora después
-        final finDate = DateTime(0, 0, 0, picked.hour, picked.minute)
+        final finDate = DateTime(0, 0, 0, horaAjustada.hour, horaAjustada.minute)
             .add(const Duration(minutes: 30));
         _horaFin = TimeOfDay(hour: finDate.hour, minute: finDate.minute);
       });
     }
   }
 
-  Future<bool> _verificarSuperposicion(
-      DateTime fecha, TimeOfDay inicio, TimeOfDay fin) async {
-    final start =
-        DateTime(fecha.year, fecha.month, fecha.day, inicio.hour, inicio.minute);
-    final end =
-        DateTime(fecha.year, fecha.month, fecha.day, fin.hour, fin.minute);
-
-    final citas = await _firestore.collection('citas').get();
-    for (var doc in citas.docs) {
-      if (_citaEnEdicion != null && doc.id == _citaEnEdicion) continue;
-      final data = doc.data();
-      final fechaHoraInicio =
-          (data['horaInicio'] as Timestamp?)?.toDate() ?? DateTime.now();
-      final fechaHoraFin =
-          (data['horaFin'] as Timestamp?)?.toDate() ?? DateTime.now();
-
-      if (start.isBefore(fechaHoraFin) && end.isAfter(fechaHoraInicio)) {
-        return true;
-      }
-    }
-    return false;
-  }
 
   Future<void> _guardarCita() async {
     if (_motivoController.text.isEmpty ||
@@ -101,12 +105,38 @@ class _CitasPageState extends State<CitasPage> {
       return;
     }
 
-    if (await _verificarSuperposicion(
-        _fechaSeleccionada!, _horaInicio!, _horaFin!)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Horario ocupado, elige otro.")),
+    // Si hay médico seleccionado, usar validaciones avanzadas
+    if (_medico != null && _pacienteController.text.isNotEmpty) {
+      final error = await _citaService.validarCita(
+        pacienteNombre: _pacienteController.text.trim(),
+        medicoId: _medico!.id!,
+        fecha: _fechaSeleccionada!,
+        horaInicio: _horaInicio!,
+        horaFin: _horaFin!,
+        medico: _medico!,
+        citaIdExcluir: _citaEnEdicion,
       );
-      return;
+
+      if (error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    } else {
+      // Validación básica si no hay médico seleccionado
+      if (_horaInicio!.minute != 0 && _horaInicio!.minute != 30) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("La hora debe ser en intervalos de 30 minutos (ej: 8:00, 8:30, 9:00)"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
     }
 
     final inicio = DateTime(
@@ -126,11 +156,18 @@ class _CitasPageState extends State<CitasPage> {
       'nombreUsuario': _nombreUsuario ?? 'Sin nombre',
       'paciente': _pacienteController.text.trim(),
       'medico': _medicoController.text.trim(),
+      if (_medico?.id != null) 'medicoId': _medico!.id,
       'motivo': _motivoController.text.trim(),
       'fecha': Timestamp.fromDate(_fechaSeleccionada!),
       'horaInicio': Timestamp.fromDate(inicio),
       'horaFin': Timestamp.fromDate(fin),
       'creadoEn': FieldValue.serverTimestamp(),
+      // Campos para borrado lógico
+      'estado': 'activa',
+      'eliminado': false,
+      'razonCancelacion': '',
+      'duracionMinutos': 30,
+      'tipoCita': 'consulta',
     };
 
     if (_citaEnEdicion == null) {
@@ -144,7 +181,11 @@ class _CitasPageState extends State<CitasPage> {
     }
 
     _motivoController.clear();
-    _medicoController.clear();
+    if (_medico == null) {
+      _medicoController.clear();
+    } else {
+      _medicoController.text = _medico!.nombre;
+    }
     _horaInicio = null;
     _horaFin = null;
     setState(() {
@@ -202,11 +243,25 @@ class _CitasPageState extends State<CitasPage> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: _medicoController,
-                      decoration: const InputDecoration(
+                      enabled: _medico == null,
+                      decoration: InputDecoration(
                         labelText: 'Médico',
-                        prefixIcon: Icon(Icons.person),
+                        prefixIcon: const Icon(Icons.person),
+                        hintText: _medico != null ? 'Médico preseleccionado' : 'Ingrese el nombre del médico',
                       ),
                     ),
+                    if (_medico != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Text(
+                          'Especialidad: ${_medico!.especialidad}',
+                          style: TextStyle(
+                            color: Colors.teal[700],
+                            fontSize: 14,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
                     TextField(
                       controller: _pacienteController,
                       decoration: const InputDecoration(
@@ -299,13 +354,52 @@ class _CitasPageState extends State<CitasPage> {
                   .orderBy('fecha', descending: false)
                   .snapshots(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(20.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
                 }
 
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text('Error: ${snapshot.error}'),
+                  );
+                }
+
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text(
+                      'No hay citas programadas',
+                      style: TextStyle(fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                  );
+                }
+
+                // Filtrar por paciente, citas eliminadas y en proceso de eliminación
+                final nombrePaciente = _nombreUsuario ?? '';
                 final citas = snapshot.data!.docs
-                    .where((doc) => !_citasEliminando.contains(doc.id))
+                    .where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final paciente = data['paciente']?.toString() ?? '';
+                      final eliminado = data['eliminado'] ?? false;
+                      return paciente == nombrePaciente && 
+                             !eliminado && 
+                             !_citasEliminando.contains(doc.id);
+                    })
                     .toList();
+                
+                // Ordenar por fecha después del filtro
+                citas.sort((a, b) {
+                  final fechaA = (a.data() as Map<String, dynamic>)['fecha'] as Timestamp?;
+                  final fechaB = (b.data() as Map<String, dynamic>)['fecha'] as Timestamp?;
+                  if (fechaA == null || fechaB == null) return 0;
+                  return fechaA.compareTo(fechaB);
+                });
                     
                 if (citas.isEmpty) {
                   return const Padding(
@@ -395,8 +489,8 @@ class _CitasPageState extends State<CitasPage> {
                           final confirm = await showDialog<bool>(
                             context: context,
                             builder: (_) => AlertDialog(
-                              title: const Text("Confirmar eliminación"),
-                              content: const Text("¿Seguro que deseas eliminar esta cita?"),
+                              title: const Text("Cancelar cita"),
+                              content: const Text("¿Seguro que deseas cancelar esta cita?\n\nLa cita se marcará como cancelada pero se mantendrá en el historial."),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(context, false),
@@ -404,43 +498,84 @@ class _CitasPageState extends State<CitasPage> {
                                 ),
                                 TextButton(
                                   onPressed: () => Navigator.pop(context, true),
-                                  child: const Text("Eliminar"),
+                                  child: const Text("Cancelar cita"),
                                 ),
                               ],
                             ),
                           );
                           if (confirm == true) {
-                            // Marcar como eliminando y eliminar inmediatamente
-                            if (mounted) {
-                              setState(() {
-                                _citasEliminando.add(cita.id);
-                              });
-                              // Eliminar inmediatamente de Firestore
-                              _firestore.collection('citas').doc(cita.id).delete().then((_) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text("Cita eliminada")),
-                                  );
-                                  // Limpiar después de un pequeño delay para asegurar que el stream se actualice
-                                  Future.delayed(const Duration(milliseconds: 100), () {
-                                    if (mounted) {
-                                      setState(() {
-                                        _citasEliminando.remove(cita.id);
-                                      });
-                                    }
-                                  });
-                                }
-                              }).catchError((error) {
-                                // Si hay error, quitar de la lista para que vuelva a aparecer
-                                if (mounted) {
-                                  setState(() {
-                                    _citasEliminando.remove(cita.id);
-                                  });
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text("Error al eliminar: $error")),
-                                  );
-                                }
-                              });
+                            // Mostrar diálogo para razón de cancelación (opcional)
+                            final razon = await showDialog<String>(
+                              context: context,
+                              builder: (context) {
+                                String? razonCancelacion = '';
+                                return AlertDialog(
+                                  title: const Text('Cancelar Cita'),
+                                  content: TextField(
+                                    decoration: const InputDecoration(
+                                      labelText: 'Razón de cancelación (opcional)',
+                                      hintText: 'Ej: Cambio de planes, emergencia...',
+                                    ),
+                                    onChanged: (value) => razonCancelacion = value,
+                                    maxLines: 3,
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, null),
+                                      child: const Text('Cancelar'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.pop(context, razonCancelacion ?? ''),
+                                      child: const Text('Confirmar'),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                            
+                            if (razon != null) {
+                              // Marcar como eliminando y cancelar (borrado lógico)
+                              if (mounted) {
+                                setState(() {
+                                  _citasEliminando.add(cita.id);
+                                });
+                                
+                                // Usar borrado lógico en lugar de eliminación física
+                                await _citaService.cancelarCita(
+                                  citaId: cita.id,
+                                  razon: razon,
+                                ).then((_) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text("Cita cancelada"),
+                                        backgroundColor: Colors.orange,
+                                      ),
+                                    );
+                                    // Limpiar después de un pequeño delay
+                                    Future.delayed(const Duration(milliseconds: 100), () {
+                                      if (mounted) {
+                                        setState(() {
+                                          _citasEliminando.remove(cita.id);
+                                        });
+                                      }
+                                    });
+                                  }
+                                }).catchError((error) {
+                                  // Si hay error, quitar de la lista para que vuelva a aparecer
+                                  if (mounted) {
+                                    setState(() {
+                                      _citasEliminando.remove(cita.id);
+                                    });
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text("Error al cancelar: $error"),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                });
+                              }
                             }
                           }
                           return confirm == true;
